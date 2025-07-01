@@ -1,0 +1,37 @@
+# Конфигурация для кластерной версии VictoriaMetrics
+# vmselect (порт 8481) - для запросов
+host = "http://ip-port:8481"
+timeout = 30
+
+# Настройки кластера
+[cluster]
+# Основные endpoints для vmselect
+query_endpoint = "/api/v1/query"
+query_range_endpoint = "/api/v1/query_range"
+health_endpoint = "/health"
+metrics_endpoint = "/api/v1/label/__name__/values"
+
+# Настройки для кластерной версии
+use_select_endpoint = true
+select_account_id = "0"
+select_project_id = "0"
+
+# Дополнительные хосты для кластерной архитектуры
+vminsert_host = "http://ip-port:8480"  # vminsert для записи данных
+vmstorage_host = "http://ip-port:8482"  # vmstorage для администрирования
+
+# Настройки вывода
+[output]
+format = "table"
+color = true
+pretty = true
+
+# Настройки логирования
+[logging]
+level = "info"
+file = "/var/log/vm-cli.log"
+
+# Настройки экспорта
+[export]
+default_format = "prometheus"
+chunk_size = 1000 

@@ -1,0 +1,47 @@
+# Пример конфигурационного файла для vm-cli
+# Скопируйте в ~/.config/vm-cli/config.toml или .vm-cli.toml
+
+# Основные настройки кластера VictoriaMetrics
+# Для кластерной версии используйте vmselect (порт 8481) для запросов
+host = "http://vm-cluster.example.com:8481"  # Адрес vmselect
+timeout = 30
+
+# Настройки аутентификации (опционально)
+[auth]
+username = "admin"
+password = "secret"
+# token = "your-jwt-token"
+
+# Настройки вывода
+[output]
+format = "table"  # table, json, yaml, csv
+color = true
+pretty = true
+
+# Настройки кластера (для кластерной версии)
+[cluster]
+# Основной endpoint для запросов (может отличаться от standalone)
+query_endpoint = "/api/v1/query"
+query_range_endpoint = "/api/v1/query_range"
+health_endpoint = "/health"
+metrics_endpoint = "/api/v1/label/__name__/values"
+
+# Настройки для кластерной версии
+# Если используется select endpoint (например, /select/0/prometheus/api/v1/query)
+use_select_endpoint = false
+select_account_id = "0"  # ID аккаунта в кластере
+select_project_id = "0"  # ID проекта в кластере
+
+# Дополнительные настройки для кластерной архитектуры
+vminsert_host = "http://vm-cluster.example.com:8480"  # Адрес vminsert для записи
+vmstorage_host = "http://vm-cluster.example.com:8482"  # Адрес vmstorage для администрирования
+
+# Настройки логирования
+[logging]
+level = "info"  # debug, info, warn, error
+file = "/var/log/vm-cli.log"  # опционально
+
+# Настройки экспорта/импорта
+[export]
+default_format = "prometheus"  # prometheus, json, csv
+chunk_size = 1000  # количество записей в чанке 
