@@ -150,7 +150,7 @@ vm-cli --config vm-cluster.toml import data.json --format prometheus
 vm-cli --config vm-cluster.toml query 'up'
 
 # Запрос с фильтрацией по меткам (используйте кавычки для значений с дефисами)
-vm-cli --config vm-cluster.toml query '{instance="dc1-dzz-broker-2-1-01:9710"}'
+vm-cli --config vm-cluster.toml query '{instance="fqdn:port"}'
 
 # Запрос с временной меткой
 vm-cli --config vm-cluster.toml query 'node_cpu_seconds_total' --time '2024-01-15T10:00:00Z'
