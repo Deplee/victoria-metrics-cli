@@ -2,10 +2,10 @@
 name = "vm-cli"
 version = "0.1.0"
 edition = "2021"
-authors = ["izuna <dkapitsev@gmail.com>"]
+authors = ["izuna <your.email@example.com>"]
 description = "CLI инструмент для работы с VictoriaMetrics"
 license = "MIT"
-repository = "https://github.com/Deplee/victoria-metrics-cli"
+repository = "https://github.com/yourusername/vm-cli"
 keywords = ["victoriametrics", "cli", "monitoring", "metrics"]
 categories = ["command-line-utilities", "monitoring"]
 
@@ -41,6 +41,7 @@ toml = "0.8"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 
 # Progress bars
 indicatif = "0.17"
