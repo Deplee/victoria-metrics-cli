@@ -53,6 +53,24 @@ pub struct MetricsList {
     pub data: Vec<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SnapshotInfo {
+    pub name: String,
+    pub created_at: String,
+    pub size: String,
+    pub status: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RetentionInfo {
+    pub current_retention: String,
+    pub used_space: String,
+    pub total_space: String,
+    pub metrics_older_than_30d: Option<String>,
+    pub metrics_older_than_60d: Option<String>,
+    pub metrics_older_than_90d: Option<String>,
+}
+
 impl VmClient {
     pub fn new(host: &str, timeout: u64, cluster_config: Option<crate::config::ClusterConfig>) -> Result<Self> {
         let client = Client::builder()
@@ -324,5 +342,254 @@ impl VmClient {
         }
 
         Ok(())
+    }
+
+    // Методы для работы со снепшотами
+    pub async fn create_snapshot(&self, name: &str) -> Result<String> {
+        let url = if let Some(cluster_config) = &self.cluster_config {
+            // В кластерной версии используем vmstorage
+            if let Some(vmstorage_host) = &cluster_config.vmstorage_host {
+                format!("{}/snapshot/create", vmstorage_host)
+            } else {
+                return Err(VmCliError::ApiError {
+                    message: "vmstorage_host не настроен в конфигурации кластера".to_string(),
+                    status: None,
+                });
+            }
+        } else {
+            format!("{}/snapshot/create", self.base_url)
+        };
+        
+        let response = self
+            .client
+            .post(&url)
+            .query(&[("snapshot", name)])
+            .send()
+            .await?;
+
+        debug!("Create snapshot response status: {}", response.status());
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(VmCliError::ApiError {
+                message: error_text,
+                status: Some(status),
+            });
+        }
+
+        let snapshot_id = response.text().await?;
+        Ok(snapshot_id)
+    }
+
+    pub async fn list_snapshots(&self) -> Result<Vec<SnapshotInfo>> {
+        let url = if let Some(cluster_config) = &self.cluster_config {
+            // В кластерной версии используем vmstorage
+            if let Some(vmstorage_host) = &cluster_config.vmstorage_host {
+                format!("{}/snapshot/list", vmstorage_host)
+            } else {
+                return Err(VmCliError::ApiError {
+                    message: "vmstorage_host не настроен в конфигурации кластера".to_string(),
+                    status: None,
+                });
+            }
+        } else {
+            format!("{}/snapshot/list", self.base_url)
+        };
+        
+        let response = self.client.get(&url).send().await?;
+
+        debug!("List snapshots response status: {}", response.status());
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(VmCliError::ApiError {
+                message: error_text,
+                status: Some(status),
+            });
+        }
+
+        // Парсим ответ в формате {"status":"ok","snapshots":[...]}
+        let response_text = response.text().await?;
+        let response_json: serde_json::Value = serde_json::from_str(&response_text)?;
+        
+        if let Some(snapshots_array) = response_json.get("snapshots").and_then(|s| s.as_array()) {
+            let mut snapshots = Vec::new();
+            for snapshot_value in snapshots_array {
+                if let Some(snapshot_obj) = snapshot_value.as_object() {
+                    let snapshot = SnapshotInfo {
+                        name: snapshot_obj.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string(),
+                        created_at: snapshot_obj.get("created_at").and_then(|c| c.as_str()).unwrap_or("").to_string(),
+                        size: snapshot_obj.get("size").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                        status: snapshot_obj.get("status").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                    };
+                    snapshots.push(snapshot);
+                }
+            }
+            Ok(snapshots)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    pub async fn delete_snapshot(&self, name: &str) -> Result<()> {
+        let url = if let Some(cluster_config) = &self.cluster_config {
+            // В кластерной версии используем vmstorage
+            if let Some(vmstorage_host) = &cluster_config.vmstorage_host {
+                format!("{}/snapshot/delete", vmstorage_host)
+            } else {
+                return Err(VmCliError::ApiError {
+                    message: "vmstorage_host не настроен в конфигурации кластера".to_string(),
+                    status: None,
+                });
+            }
+        } else {
+            format!("{}/snapshot/delete", self.base_url)
+        };
+        
+        let response = self
+            .client
+            .post(&url)
+            .query(&[("snapshot", name)])
+            .send()
+            .await?;
+
+        debug!("Delete snapshot response status: {}", response.status());
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(VmCliError::ApiError {
+                message: error_text,
+                status: Some(status),
+            });
+        }
+
+        Ok(())
+    }
+
+    pub async fn restore_snapshot(&self, name: &str) -> Result<()> {
+        let url = if let Some(cluster_config) = &self.cluster_config {
+            // В кластерной версии используем vmstorage
+            if let Some(vmstorage_host) = &cluster_config.vmstorage_host {
+                format!("{}/snapshot/restore", vmstorage_host)
+            } else {
+                return Err(VmCliError::ApiError {
+                    message: "vmstorage_host не настроен в конфигурации кластера".to_string(),
+                    status: None,
+                });
+            }
+        } else {
+            format!("{}/snapshot/restore", self.base_url)
+        };
+        
+        let response = self
+            .client
+            .post(&url)
+            .query(&[("snapshot", name)])
+            .send()
+            .await?;
+
+        debug!("Restore snapshot response status: {}", response.status());
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(VmCliError::ApiError {
+                message: error_text,
+                status: Some(status),
+            });
+        }
+
+        Ok(())
+    }
+
+    // Методы для работы с retention
+    pub async fn get_retention_info(&self) -> Result<RetentionInfo> {
+        let url = format!("{}/admin/tsdb/retention", self.base_url);
+        
+        let response = self.client.get(&url).send().await?;
+
+        debug!("Retention info response status: {}", response.status());
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(VmCliError::ApiError {
+                message: error_text,
+                status: Some(status),
+            });
+        }
+
+        let retention_info: RetentionInfo = response.json().await?;
+        Ok(retention_info)
+    }
+
+    pub async fn set_retention(&self, retention: &str) -> Result<()> {
+        let url = format!("{}/admin/tsdb/retention", self.base_url);
+        
+        let response = self
+            .client
+            .post(&url)
+            .query(&[("retention", retention)])
+            .send()
+            .await?;
+
+        debug!("Set retention response status: {}", response.status());
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(VmCliError::ApiError {
+                message: error_text,
+                status: Some(status),
+            });
+        }
+
+        Ok(())
+    }
+
+
+
+    // Методы для работы с режимами работы
+    pub async fn get_flags(&self) -> Result<serde_json::Value> {
+        let url = format!("{}/flags", self.base_url);
+        
+        let response = self.client.get(&url).send().await?;
+
+        debug!("Get flags response status: {}", response.status());
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(VmCliError::ApiError {
+                message: error_text,
+                status: Some(status),
+            });
+        }
+
+        let flags: serde_json::Value = response.json().await?;
+        Ok(flags)
+    }
+
+    pub async fn get_build_info(&self) -> Result<serde_json::Value> {
+        let url = format!("{}/api/v1/status/buildinfo", self.base_url);
+        
+        let response = self.client.get(&url).send().await?;
+
+        debug!("Get build info response status: {}", response.status());
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(VmCliError::ApiError {
+                message: error_text,
+                status: Some(status),
+            });
+        }
+
+        let build_info: serde_json::Value = response.json().await?;
+        Ok(build_info)
     }
 } 

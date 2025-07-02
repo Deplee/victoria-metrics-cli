@@ -133,24 +133,52 @@ impl AdminCommand {
 
     async fn manage_retention(
         &self,
-        _client: &VmClient,
+        client: &VmClient,
         set: Option<&str>,
         show: bool,
         check: bool,
     ) -> Result<()> {
         if show {
             println!("{}", "Информация о retention:".bold());
-            println!("Текущий retention: 30 дней (по умолчанию)");
-            println!("Используемое место: 45.2 GB");
-            println!("Общее место: 100 GB");
+            match client.get_retention_info().await {
+                Ok(info) => {
+                    println!("Текущий retention: {}", info.current_retention);
+                    println!("Используемое место: {}", info.used_space);
+                    println!("Общее место: {}", info.total_space);
+                }
+                Err(e) => {
+                    println!("{}", "Ошибка получения информации о retention:".red().bold());
+                    println!("{}", e);
+                }
+            }
         } else if let Some(duration) = set {
             println!("{} retention на {}", "Установка:".yellow().bold(), duration);
-            println!("{}", "Retention успешно обновлен".green());
+            match client.set_retention(duration).await {
+                Ok(_) => println!("{}", "Retention успешно обновлен".green()),
+                Err(e) => {
+                    println!("{}", "Ошибка установки retention:".red().bold());
+                    println!("{}", e);
+                }
+            }
         } else if check {
             println!("{}", "Анализ retention:".bold());
-            println!("Метрики старше 30 дней: 15.3 GB");
-            println!("Метрики старше 60 дней: 8.7 GB");
-            println!("Метрики старше 90 дней: 3.2 GB");
+            match client.get_retention_info().await {
+                Ok(info) => {
+                    if let Some(size_30d) = info.metrics_older_than_30d {
+                        println!("Метрики старше 30 дней: {}", size_30d);
+                    }
+                    if let Some(size_60d) = info.metrics_older_than_60d {
+                        println!("Метрики старше 60 дней: {}", size_60d);
+                    }
+                    if let Some(size_90d) = info.metrics_older_than_90d {
+                        println!("Метрики старше 90 дней: {}", size_90d);
+                    }
+                }
+                Err(e) => {
+                    println!("{}", "Ошибка анализа retention:".red().bold());
+                    println!("{}", e);
+                }
+            }
         } else {
             println!("{}", "Используйте --show, --set или --check".yellow());
         }
@@ -160,7 +188,7 @@ impl AdminCommand {
 
     async fn manage_snapshots(
         &self,
-        _client: &VmClient,
+        client: &VmClient,
         name: Option<&str>,
         list: bool,
         restore: Option<&str>,
@@ -168,18 +196,61 @@ impl AdminCommand {
     ) -> Result<()> {
         if list {
             println!("{}", "Доступные снепшоты:".bold());
-            println!("daily-backup-2024-01-15    2024-01-15 02:00:00    2.3 GB");
-            println!("weekly-backup-2024-01-08   2024-01-08 02:00:00    2.1 GB");
-            println!("monthly-backup-2024-01-01  2024-01-01 02:00:00    2.0 GB");
+            match client.list_snapshots().await {
+                Ok(snapshots) => {
+                    if snapshots.is_empty() {
+                        println!("Снепшоты не найдены");
+                    } else {
+                        println!("{:<30} {:<20} {:<10} {}", 
+                            "Имя".bold(), 
+                            "Создан".bold(), 
+                            "Размер".bold(), 
+                            "Статус".bold());
+                        println!("{}", "-".repeat(80));
+                        for snapshot in snapshots {
+                            println!("{:<30} {:<20} {:<10} {}", 
+                                snapshot.name, 
+                                snapshot.created_at, 
+                                snapshot.size, 
+                                snapshot.status);
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("{}", "Ошибка получения списка снепшотов:".red().bold());
+                    println!("{}", e);
+                }
+            }
         } else if let Some(snapshot_name) = name {
             println!("{} снепшота: {}", "Создание:".yellow().bold(), snapshot_name);
-            println!("{}", "Снепшот успешно создан".green());
+            match client.create_snapshot(snapshot_name).await {
+                Ok(snapshot_id) => {
+                    println!("{}", "Снепшот успешно создан".green());
+                    println!("ID снепшота: {}", snapshot_id);
+                }
+                Err(e) => {
+                    println!("{}", "Ошибка создания снепшота:".red().bold());
+                    println!("{}", e);
+                }
+            }
         } else if let Some(snapshot_name) = restore {
             println!("{} снепшота: {}", "Восстановление:".yellow().bold(), snapshot_name);
-            println!("{}", "Снепшот успешно восстановлен".green());
+            match client.restore_snapshot(snapshot_name).await {
+                Ok(_) => println!("{}", "Снепшот успешно восстановлен".green()),
+                Err(e) => {
+                    println!("{}", "Ошибка восстановления снепшота:".red().bold());
+                    println!("{}", e);
+                }
+            }
         } else if let Some(snapshot_name) = delete {
             println!("{} снепшота: {}", "Удаление:".yellow().bold(), snapshot_name);
-            println!("{}", "Снепшот успешно удален".green());
+            match client.delete_snapshot(snapshot_name).await {
+                Ok(_) => println!("{}", "Снепшот успешно удален".green()),
+                Err(e) => {
+                    println!("{}", "Ошибка удаления снепшота:".red().bold());
+                    println!("{}", e);
+                }
+            }
         } else {
             println!("{}", "Используйте --list, --name, --restore или --delete".yellow());
         }
@@ -189,21 +260,60 @@ impl AdminCommand {
 
     async fn manage_mode(
         &self,
-        _client: &VmClient,
+        client: &VmClient,
         readonly: bool,
         maintenance: bool,
         show: bool,
     ) -> Result<()> {
         if show {
-            println!("{}", "Текущий режим работы:".bold());
-            println!("Режим: Нормальный");
-            println!("Доступность: Чтение/Запись");
+            println!("{}", "Информация о VictoriaMetrics:".bold());
+            println!();
+            
+            // Получаем флаги
+            println!("{}", "Флаги запуска:".bold());
+            match client.get_flags().await {
+                Ok(flags_data) => {
+                    if let Some(flags_obj) = flags_data.as_object() {
+                        for (key, value) in flags_obj {
+                            println!("  {}: {}", key, value);
+                        }
+                    } else {
+                        println!("  {}", flags_data);
+                    }
+                }
+                Err(e) => {
+                    println!("  {}: {}", "Ошибка получения флагов".red(), e);
+                }
+            }
+            
+            println!();
+            println!("{}", "Информация о сборке:".bold());
+            match client.get_build_info().await {
+                Ok(build_data) => {
+                    if let Some(data) = build_data.get("data") {
+                        if let Some(result) = data.as_array().and_then(|arr| arr.first()) {
+                            if let Some(result_obj) = result.as_object() {
+                                for (key, value) in result_obj {
+                                    println!("  {}: {}", key, value);
+                                }
+                            }
+                        }
+                    } else {
+                        println!("  {}", build_data);
+                    }
+                }
+                Err(e) => {
+                    println!("  {}: {}", "Ошибка получения информации о сборке".red(), e);
+                }
+            }
         } else if readonly {
             println!("{}", "Включение режима только для чтения...".yellow().bold());
-            println!("{}", "Режим только для чтения активирован".green());
+            println!("{}", "Для включения режима только для чтения используйте флаг -readonly при запуске VictoriaMetrics".yellow());
+            println!("Пример: ./victoria-metrics -readonly");
         } else if maintenance {
             println!("{}", "Включение режима обслуживания...".yellow().bold());
-            println!("{}", "Режим обслуживания активирован".green());
+            println!("{}", "Для включения режима обслуживания используйте флаг -maintenance при запуске VictoriaMetrics".yellow());
+            println!("Пример: ./victoria-metrics -maintenance");
         } else {
             println!("{}", "Используйте --show, --readonly или --maintenance".yellow());
         }
