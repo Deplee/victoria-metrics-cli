@@ -71,6 +71,13 @@ pub struct RetentionInfo {
     pub metrics_older_than_90d: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SlowQueryInfo {
+    pub query: String,
+    pub duration: f64,
+    pub reason: String,
+}
+
 impl VmClient {
     pub fn new(host: &str, timeout: u64, cluster_config: Option<crate::config::ClusterConfig>) -> Result<Self> {
         let client = Client::builder()
@@ -591,5 +598,94 @@ impl VmClient {
 
         let build_info: serde_json::Value = response.json().await?;
         Ok(build_info)
+    }
+
+    // Методы для получения метрик производительности
+    pub async fn get_metrics_info(&self) -> Result<serde_json::Value> {
+        let url = format!("{}/metrics", self.base_url);
+        
+        let response = self.client.get(&url).send().await?;
+
+        debug!("Get metrics info response status: {}", response.status());
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(VmCliError::ApiError {
+                message: error_text,
+                status: Some(status),
+            });
+        }
+
+        let metrics_text = response.text().await?;
+        
+        // Парсим метрики в формате Prometheus
+        let mut metrics_data = serde_json::Map::new();
+        for line in metrics_text.lines() {
+            if line.starts_with('#') || line.is_empty() {
+                continue;
+            }
+            
+            if let Some((metric_name, value)) = line.split_once(' ') {
+                if let Ok(num_value) = value.parse::<f64>() {
+                    if let Some(number) = serde_json::Number::from_f64(num_value) {
+                        metrics_data.insert(metric_name.to_string(), serde_json::Value::Number(number));
+                    }
+                }
+            }
+        }
+        
+        Ok(serde_json::Value::Object(metrics_data))
+    }
+
+    pub async fn get_slow_queries(&self) -> Result<Vec<SlowQueryInfo>> {
+        // Получаем метрики производительности
+        let metrics = self.get_metrics_info().await?;
+        
+        let mut slow_queries = Vec::new();
+        
+        // Ищем метрики, связанные с медленными запросами
+        if let Some(metrics_obj) = metrics.as_object() {
+            // vm_request_duration_seconds - время выполнения запросов
+            if let Some(duration_metric) = metrics_obj.get("vm_request_duration_seconds") {
+                if let Some(duration) = duration_metric.as_f64() {
+                    if duration > 1.0 {
+                        slow_queries.push(SlowQueryInfo {
+                            query: "Медленный запрос".to_string(),
+                            duration: duration,
+                            reason: "Время выполнения > 1 секунды".to_string(),
+                        });
+                    }
+                }
+            }
+            
+            // vm_http_requests_total - общее количество запросов
+            if let Some(requests_total) = metrics_obj.get("vm_http_requests_total") {
+                if let Some(total) = requests_total.as_f64() {
+                    if total > 1000.0 {
+                        slow_queries.push(SlowQueryInfo {
+                            query: "Высокая нагрузка".to_string(),
+                            duration: 0.0,
+                            reason: format!("Общее количество запросов: {}", total),
+                        });
+                    }
+                }
+            }
+            
+            // vm_cache_size_bytes - размер кэша
+            if let Some(cache_size) = metrics_obj.get("vm_cache_size_bytes") {
+                if let Some(size) = cache_size.as_f64() {
+                    if size > 1_000_000_000.0 { // > 1GB
+                        slow_queries.push(SlowQueryInfo {
+                            query: "Большой кэш".to_string(),
+                            duration: 0.0,
+                            reason: format!("Размер кэша: {:.2} GB", size / 1_000_000_000.0),
+                        });
+                    }
+                }
+            }
+        }
+        
+        Ok(slow_queries)
     }
 } 

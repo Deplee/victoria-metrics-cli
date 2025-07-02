@@ -106,7 +106,7 @@ impl DebugCommand {
 
     async fn analyze_slow_queries(
         &self,
-        _client: &VmClient,
+        client: &VmClient,
         top: usize,
         range: &str,
     ) -> Result<()> {
@@ -114,28 +114,35 @@ impl DebugCommand {
         println!("Диапазон: {}", range);
         println!();
 
-        // Симуляция данных о медленных запросах
-        let slow_queries = vec![
-            ("rate(http_requests[1h])", 3.2, "Высокая нагрузка"),
-            ("sum by (pod) (container_cpu)", 2.1, "Много групп"),
-            ("histogram_quantile(0.95, rate(http_duration_bucket[5m]))", 1.8, "Сложная агрегация"),
-            ("avg_over_time(node_memory_usage[1h])", 1.5, "Длительный диапазон"),
-            ("count(rate(http_errors[5m]))", 1.2, "Простой запрос"),
-        ];
+        match client.get_slow_queries().await {
+            Ok(slow_queries) => {
+                if slow_queries.is_empty() {
+                    println!("{}", "Медленные запросы не обнаружены".green());
+                    return Ok(());
+                }
 
-        println!("{:<50} {:<10} {}", "Запрос", "Время (с)", "Причина");
-        println!("{:-<80}", "");
+                println!("{:<30} {:<10} {}", "Тип проблемы", "Время (с)", "Причина");
+                println!("{:-<60}", "");
 
-        for (_i, (query, time, reason)) in slow_queries.iter().take(top).enumerate() {
-            let time_color = if *time > 2.0 {
-                time.to_string().red()
-            } else if *time > 1.0 {
-                time.to_string().yellow()
-            } else {
-                time.to_string().green()
-            };
+                for query_info in slow_queries.iter().take(top) {
+                    let time_color = if query_info.duration > 2.0 {
+                        format!("{:.2}", query_info.duration).red()
+                    } else if query_info.duration > 1.0 {
+                        format!("{:.2}", query_info.duration).yellow()
+                    } else {
+                        format!("{:.2}", query_info.duration).green()
+                    };
 
-            println!("{:<50} {:<10} {}", query, time_color, reason);
+                    println!("{:<30} {:<10} {}", 
+                        query_info.query, 
+                        time_color, 
+                        query_info.reason);
+                }
+            }
+            Err(e) => {
+                println!("{}", "Ошибка получения данных о медленных запросах:".red().bold());
+                println!("{}", e);
+            }
         }
 
         Ok(())
@@ -163,27 +170,77 @@ impl DebugCommand {
             return Ok(());
         }
 
-        // Симуляция анализа пропусков
+        // Реальный анализ пропусков в данных
         println!("{:<20} {:<20} {:<15} {}", "Начало", "Конец", "Длительность", "Статус");
         println!("{:-<70}", "");
 
-        let gaps = vec![
-            ("2024-01-15 14:30:00", "2024-01-15 14:35:00", "5m", "Найден"),
-            ("2024-01-15 16:45:00", "2024-01-15 16:47:00", "2m", "Найден"),
-        ];
+        // Выполняем запрос для поиска пропусков
+        // Используем query_range для получения временных рядов
+        let step = "60s"; // Шаг в 1 минуту
+        let end_time = chrono::Utc::now();
+        let start_time = end_time - chrono::Duration::hours(24); // Последние 24 часа
+        
+        let start_str = start_time.timestamp().to_string();
+        let end_str = end_time.timestamp().to_string();
+        
+        let range_query = format!("{}", metric);
+        match client.query_range(&range_query, &start_str, &end_str, step).await {
+            Ok(range_response) => {
+                let mut gaps = Vec::new();
+                
+                for result in &range_response.data.result {
+                    if let Some(values) = &result.values {
+                        if values.len() > 1 {
+                            // Анализируем временные ряды на предмет пропусков
+                            for i in 1..values.len() {
+                                let prev_time = values[i-1].0;
+                                let curr_time = values[i].0;
+                                let gap_duration = curr_time - prev_time;
+                                
+                                // Если пропуск больше минимального
+                                if gap_duration > min_gap as f64 {
+                                    let start_dt = chrono::DateTime::from_timestamp(prev_time as i64, 0)
+                                        .unwrap_or_default()
+                                        .format("%Y-%m-%d %H:%M:%S")
+                                        .to_string();
+                                    let end_dt = chrono::DateTime::from_timestamp(curr_time as i64, 0)
+                                        .unwrap_or_default()
+                                        .format("%Y-%m-%d %H:%M:%S")
+                                        .to_string();
+                                    
+                                    let duration_str = if gap_duration > 3600.0 {
+                                        format!("{:.0}h", gap_duration / 3600.0)
+                                    } else if gap_duration > 60.0 {
+                                        format!("{:.0}m", gap_duration / 60.0)
+                                    } else {
+                                        format!("{:.0}s", gap_duration)
+                                    };
+                                    
+                                    gaps.push((start_dt, end_dt, duration_str, "Найден".to_string()));
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                for (start, end, duration, status) in &gaps {
+                    let status_color = if *status == "Найден" {
+                        status.red()
+                    } else {
+                        status.green()
+                    };
 
-        for (start, end, duration, status) in &gaps {
-            let status_color = if *status == "Найден" {
-                status.red()
-            } else {
-                status.green()
-            };
+                    println!("{:<20} {:<20} {:<15} {}", start, end, duration, status_color);
+                }
 
-            println!("{:<20} {:<20} {:<15} {}", start, end, duration, status_color);
-        }
-
-        if gaps.is_empty() {
-            println!("{}", "Пропуски не найдены".green());
+                if gaps.is_empty() {
+                    println!("{}", "Пропуски не найдены".green());
+                }
+            }
+            Err(e) => {
+                println!("{}", "Ошибка при поиске пропусков:".red().bold());
+                println!("{}", e);
+            }
         }
 
         Ok(())
@@ -191,38 +248,74 @@ impl DebugCommand {
 
     async fn analyze_memory_usage(
         &self,
-        _client: &VmClient,
+        client: &VmClient,
         verbose: bool,
         _sort: &MemorySort,
     ) -> Result<()> {
         println!("{}", "Анализ использования памяти:".bold());
         println!();
 
-        if verbose {
-            println!("{:<30} {:<15} {:<15} {:<15}", "Компонент", "Использовано", "Выделено", "Процент");
-            println!("{:-<80}", "");
+        match client.get_metrics_info().await {
+            Ok(metrics) => {
+                if let Some(metrics_obj) = metrics.as_object() {
+                    if verbose {
+                        println!("{:<30} {:<15} {:<15} {:<15}", "Компонент", "Использовано", "Выделено", "Процент");
+                        println!("{:-<80}", "");
 
-            let memory_data = vec![
-                ("TSDB", "2.3 GB", "3.0 GB", "76.7%"),
-                ("Index", "1.1 GB", "1.5 GB", "73.3%"),
-                ("Cache", "512 MB", "1.0 GB", "51.2%"),
-                ("HTTP Server", "128 MB", "256 MB", "50.0%"),
-            ];
+                        // Получаем метрики памяти
+                        let mut memory_data = Vec::new();
+                        
+                        if let Some(process_resident_memory_bytes) = metrics_obj.get("process_resident_memory_bytes") {
+                            if let Some(used_mb) = process_resident_memory_bytes.as_f64() {
+                                let used_gb = used_mb / 1_000_000_000.0;
+                                memory_data.push(("Процесс", format!("{:.2} GB", used_gb), "N/A".to_string(), "N/A".to_string()));
+                            }
+                        }
+                        
+                        if let Some(vm_cache_size_bytes) = metrics_obj.get("vm_cache_size_bytes") {
+                            if let Some(cache_mb) = vm_cache_size_bytes.as_f64() {
+                                let cache_gb = cache_mb / 1_000_000_000.0;
+                                memory_data.push(("Кэш", format!("{:.2} GB", cache_gb), "N/A".to_string(), "N/A".to_string()));
+                            }
+                        }
+                        
+                        if let Some(go_memstats_heap_alloc_bytes) = metrics_obj.get("go_memstats_heap_alloc_bytes") {
+                            if let Some(heap_mb) = go_memstats_heap_alloc_bytes.as_f64() {
+                                let heap_gb = heap_mb / 1_000_000_000.0;
+                                memory_data.push(("Heap", format!("{:.2} GB", heap_gb), "N/A".to_string(), "N/A".to_string()));
+                            }
+                        }
 
-            for (component, used, allocated, percent) in memory_data {
-                let percent_color = if percent.parse::<f64>().unwrap_or(0.0) > 80.0 {
-                    percent.red()
-                } else if percent.parse::<f64>().unwrap_or(0.0) > 60.0 {
-                    percent.yellow()
+                        for (component, used, allocated, percent) in memory_data {
+                            println!("{:<30} {:<15} {:<15} {:<15}", component, used, allocated, percent);
+                        }
+                    } else {
+                        // Общая информация
+                        let mut total_used = 0.0;
+                        
+                        if let Some(process_resident_memory_bytes) = metrics_obj.get("process_resident_memory_bytes") {
+                            if let Some(used_mb) = process_resident_memory_bytes.as_f64() {
+                                total_used = used_mb / 1_000_000_000.0;
+                            }
+                        }
+                        
+                        println!("Использование памяти процессом: {:.2} GB", total_used);
+                        
+                        if let Some(vm_cache_size_bytes) = metrics_obj.get("vm_cache_size_bytes") {
+                            if let Some(cache_mb) = vm_cache_size_bytes.as_f64() {
+                                let cache_gb = cache_mb / 1_000_000_000.0;
+                                println!("Размер кэша: {:.2} GB", cache_gb);
+                            }
+                        }
+                    }
                 } else {
-                    percent.green()
-                };
-
-                println!("{:<30} {:<15} {:<15} {:<15}", component, used, allocated, percent_color);
+                    println!("{}", "Не удалось получить метрики памяти".yellow());
+                }
             }
-        } else {
-            println!("Общее использование: 4.0 GB / 5.8 GB (68.9%)");
-            println!("Свободно: 1.8 GB");
+            Err(e) => {
+                println!("{}", "Ошибка получения метрик памяти:".red().bold());
+                println!("{}", e);
+            }
         }
 
         Ok(())
