@@ -2,7 +2,7 @@
 name = "vm-cli"
 version = "0.1.0"
 edition = "2021"
-authors = ["izuna <your.email@example.com>"]
+authors = ["izuna <dkapitsev@gmail.com>"]
 description = "CLI инструмент для работы с VictoriaMetrics"
 license = "MIT"
 repository = "https://github.com/yourusername/vm-cli"
