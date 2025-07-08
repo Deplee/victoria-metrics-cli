@@ -11,31 +11,24 @@ use tracing::info;
 
 #[derive(Parser)]
 pub struct ExportCommand {
-    /// Фильтр метрик для экспорта (например: http_requests_total)
     #[arg(value_name = "MATCH")]
     match_: String,
 
-    /// Начальное время (Unix timestamp или RFC3339)
     #[arg(short, long)]
     start: Option<String>,
 
-    /// Конечное время (Unix timestamp или RFC3339)
     #[arg(short, long)]
     end: Option<String>,
 
-    /// Диапазон времени (например: 1h, 6h, 1d, 7d)
     #[arg(short, long)]
     range: Option<String>,
 
-    /// Файл для сохранения экспорта
     #[arg(short, long)]
     output: Option<String>,
 
-    /// Формат экспорта
     #[arg(short, long, value_enum, default_value = "prometheus")]
     format: ExportFormat,
 
-    /// Показать прогресс
     #[arg(long)]
     progress: bool,
 }
@@ -51,12 +44,10 @@ impl ExportCommand {
     pub async fn execute(&self, client: &VmClient) -> Result<()> {
         info!("Экспорт данных: {}", self.match_);
 
-        // Определение временного диапазона
         let (start, end) = self.determine_time_range()?;
 
         info!("Временной диапазон: {} - {}", start, end);
 
-        // Создание индикатора прогресса
         let progress_bar = if self.progress {
             let pb = ProgressBar::new_spinner();
             pb.set_style(
@@ -70,17 +61,14 @@ impl ExportCommand {
             None
         };
 
-        // Выполнение экспорта
         let export_data = client.export(&self.match_, Some(&start), Some(&end)).await?;
 
         if let Some(pb) = &progress_bar {
             pb.finish_with_message("Экспорт завершен");
         }
 
-        // Форматирование данных
         let formatted_data = self.format_data(&export_data)?;
 
-        // Сохранение или вывод
         if let Some(output_path) = &self.output {
             self.save_to_file(&formatted_data, output_path)?;
             println!(
@@ -102,7 +90,6 @@ impl ExportCommand {
         } else if let (Some(start), Some(end)) = (&self.start, &self.end) {
             Ok((start.clone(), end.clone()))
         } else {
-            // По умолчанию последний час
             parse_time_range("1h")
                 .map_err(|e| crate::error::VmCliError::TimeParseError(e))
         }
@@ -112,7 +99,6 @@ impl ExportCommand {
         match self.format {
             ExportFormat::Prometheus => Ok(data.to_string()),
             ExportFormat::Json => {
-                // Конвертация Prometheus формата в JSON
                 let lines: Vec<&str> = data.lines().collect();
                 let mut json_data = Vec::new();
 
@@ -153,7 +139,6 @@ impl ExportCommand {
                     .map_err(|e| crate::error::VmCliError::JsonError(e))
             }
             ExportFormat::Csv => {
-                // Конвертация в CSV
                 let mut csv_data = String::new();
                 csv_data.push_str("timestamp,value,metric_name");
                 
@@ -190,4 +175,4 @@ impl ExportCommand {
         
         Ok(())
     }
-} 
+}

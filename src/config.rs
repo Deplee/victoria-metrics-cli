@@ -74,7 +74,6 @@ pub struct ExportConfig {
     pub chunk_size: usize,
 }
 
-// Функции по умолчанию для конфигурации кластера
 fn default_query_endpoint() -> String { "/api/v1/query".to_string() }
 fn default_query_range_endpoint() -> String { "/api/v1/query_range".to_string() }
 fn default_health_endpoint() -> String { "/health".to_string() }
@@ -107,20 +106,17 @@ impl Config {
     pub fn load(config_path: Option<&str>) -> crate::error::Result<Self> {
         let mut builder: config::ConfigBuilder<DefaultState> = config::ConfigBuilder::default();
 
-        // Загрузка конфигурации по умолчанию
         builder = builder.set_default("host", "http://localhost:8428")?;
         builder = builder.set_default("timeout", 30)?;
         builder = builder.set_default("output.format", "table")?;
         builder = builder.set_default("output.color", true)?;
         builder = builder.set_default("output.pretty", true)?;
 
-        // Загрузка из файла конфигурации
         if let Some(path) = config_path {
             if Path::new(path).exists() {
                 builder = builder.add_source(config::File::with_name(path));
             }
         } else {
-            // Попытка загрузки из стандартных мест
             let config_dirs = vec![
                 dirs::config_dir().map(|p| p.join("vm-cli").join("config.toml")),
                 Some(std::env::current_dir()?.join(".vm-cli.toml")),
@@ -137,13 +133,11 @@ impl Config {
             }
         }
 
-        // Загрузка из переменных окружения
         builder = builder.add_source(config::Environment::with_prefix("VM"));
 
         let config = builder.build()?;
         let config: Config = config.try_deserialize()?;
         
-        // Отладочная информация
         tracing::debug!("Загружена конфигурация: host={}", config.host);
         
         Ok(config)
@@ -155,4 +149,4 @@ impl Config {
         std::fs::write(path, content)?;
         Ok(())
     }
-} 
+}

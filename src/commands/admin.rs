@@ -12,70 +12,52 @@ pub struct AdminCommand {
 
 #[derive(Subcommand)]
 pub enum AdminSubcommand {
-    /// Удаление метрик
     Delete {
-        /// Фильтр метрик для удаления
         #[arg(value_name = "MATCH")]
         match_: String,
 
-        /// Начальное время
         #[arg(short, long)]
         start: Option<String>,
 
-        /// Конечное время
         #[arg(short, long)]
         end: Option<String>,
 
-        /// Подтверждение удаления
         #[arg(long)]
         confirm: bool,
     },
 
-    /// Управление retention
     Retention {
-        /// Установить retention период
         #[arg(short, long)]
         set: Option<String>,
 
-        /// Показать текущий retention
         #[arg(long)]
         show: bool,
 
-        /// Проверить, сколько места освободит очистка
         #[arg(long)]
         check: bool,
     },
 
-    /// Создание снепшота
     Snapshot {
-        /// Имя снепшота
         #[arg(short, long)]
         name: Option<String>,
 
-        /// Список снепшотов
         #[arg(long)]
         list: bool,
 
-        /// Восстановить снепшот
         #[arg(short, long)]
         restore: Option<String>,
 
-        /// Удалить снепшот
         #[arg(long)]
         delete: Option<String>,
     },
 
-    /// Управление режимами работы
     Mode {
-        /// Включить режим только для чтения
         #[arg(long)]
         readonly: bool,
 
-        /// Включить режим обслуживания
         #[arg(long)]
         maintenance: bool,
 
-        /// Показать текущий режим
         #[arg(long)]
         show: bool,
     },
@@ -269,7 +251,6 @@ impl AdminCommand {
             println!("{}", "Информация о VictoriaMetrics:".bold());
             println!();
             
-            // Получаем флаги
             println!("{}", "Флаги запуска:".bold());
             match client.get_flags().await {
                 Ok(flags_data) => {
@@ -320,4 +301,4 @@ impl AdminCommand {
         
         Ok(())
     }
-} 
+}

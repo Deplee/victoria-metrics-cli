@@ -12,65 +12,46 @@ pub struct DebugCommand {
 
 #[derive(Subcommand)]
 pub enum DebugSubcommand {
-    /// Анализ медленных запросов
     SlowQueries {
-        /// Количество запросов для отображения
         #[arg(short, long, default_value = "10")]
         top: usize,
-
-        /// Временной диапазон для анализа
         #[arg(short, long, default_value = "1h")]
         range: String,
     },
 
-    /// Поиск пропусков в данных
     Gaps {
-        /// Метрика для проверки
         #[arg(value_name = "METRIC")]
         metric: String,
-
-        /// Временной диапазон
         #[arg(short, long, default_value = "24h")]
         range: String,
 
-        /// Минимальный размер пропуска (в секундах)
         #[arg(short, long, default_value = "60")]
         min_gap: u64,
     },
 
-    /// Анализ использования памяти
     Memory {
-        /// Показать детальную информацию
         #[arg(short, long)]
         verbose: bool,
 
-        /// Сортировка по использованию
         #[arg(short, long, value_enum, default_value = "size")]
         sort: MemorySort,
     },
 
-    /// Проверка производительности
     Performance {
-        /// Количество тестовых запросов
         #[arg(short, long, default_value = "10")]
         count: usize,
 
-        /// Запрос для тестирования
         #[arg(short, long, default_value = "up")]
         query: String,
     },
 
-    /// Анализ метрик
     Metrics {
-        /// Поиск метрик по паттерну
         #[arg(value_name = "PATTERN")]
         pattern: Option<String>,
 
-        /// Показать статистику по метрикам
         #[arg(long)]
         stats: bool,
 
-        /// Экспорт списка метрик
         #[arg(short, long)]
         export: Option<String>,
     },
@@ -161,7 +142,6 @@ impl DebugCommand {
         println!("Минимальный пропуск: {} секунд", min_gap);
         println!();
 
-        // Выполнение запроса для поиска пропусков
         let query = format!("count({})", metric);
         let response = client.query(&query, None).await?;
 
@@ -170,15 +150,12 @@ impl DebugCommand {
             return Ok(());
         }
 
-        // Реальный анализ пропусков в данных
         println!("{:<20} {:<20} {:<15} {}", "Начало", "Конец", "Длительность", "Статус");
         println!("{:-<70}", "");
 
-        // Выполняем запрос для поиска пропусков
-        // Используем query_range для получения временных рядов
-        let step = "60s"; // Шаг в 1 минуту
+        let step = "60s";
         let end_time = chrono::Utc::now();
-        let start_time = end_time - chrono::Duration::hours(24); // Последние 24 часа
+        let start_time = end_time - chrono::Duration::hours(24);
         
         let start_str = start_time.timestamp().to_string();
         let end_str = end_time.timestamp().to_string();
@@ -191,13 +168,11 @@ impl DebugCommand {
                 for result in &range_response.data.result {
                     if let Some(values) = &result.values {
                         if values.len() > 1 {
-                            // Анализируем временные ряды на предмет пропусков
                             for i in 1..values.len() {
                                 let prev_time = values[i-1].0;
                                 let curr_time = values[i].0;
                                 let gap_duration = curr_time - prev_time;
                                 
-                                // Если пропуск больше минимального
                                 if gap_duration > min_gap as f64 {
                                     let start_dt = chrono::DateTime::from_timestamp(prev_time as i64, 0)
                                         .unwrap_or_default()
@@ -262,7 +237,6 @@ impl DebugCommand {
                         println!("{:<30} {:<15} {:<15} {:<15}", "Компонент", "Использовано", "Выделено", "Процент");
                         println!("{:-<80}", "");
 
-                        // Получаем метрики памяти
                         let mut memory_data = Vec::new();
                         
                         if let Some(process_resident_memory_bytes) = metrics_obj.get("process_resident_memory_bytes") {
@@ -290,7 +264,6 @@ impl DebugCommand {
                             println!("{:<30} {:<15} {:<15} {:<15}", component, used, allocated, percent);
                         }
                     } else {
-                        // Общая информация
                         let mut total_used = 0.0;
                         
                         if let Some(process_resident_memory_bytes) = metrics_obj.get("process_resident_memory_bytes") {
@@ -394,7 +367,6 @@ impl DebugCommand {
             println!("Общая статистика:");
             println!("Всего метрик: {}", metrics.data.len());
             
-            // Группировка по префиксам
             let mut prefixes = std::collections::HashMap::new();
             for metric in &metrics.data {
                 if let Some(prefix) = metric.split('_').next() {
@@ -418,7 +390,6 @@ impl DebugCommand {
         }
 
         if let Some(export_path) = export {
-            // Экспорт списка метрик
             let content = metrics.data.join("\n");
             std::fs::write(export_path, content)
                 .map_err(|e| crate::error::VmCliError::IoError(e))?;
@@ -427,4 +398,4 @@ impl DebugCommand {
 
         Ok(())
     }
-} 
+}

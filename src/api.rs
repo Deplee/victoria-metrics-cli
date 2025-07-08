@@ -95,11 +95,9 @@ impl VmClient {
     fn get_endpoint(&self, default_endpoint: &str) -> String {
         if let Some(cluster) = &self.cluster_config {
             if cluster.use_select_endpoint {
-                // Для API endpoints используем select формат
                 if default_endpoint.starts_with("/api/") {
                     format!("/select/{}/prometheus{}", cluster.select_account_id, default_endpoint)
                 } else {
-                    // Для других endpoints (например, /health) используем прямой путь
                     default_endpoint.to_string()
                 }
             } else {
@@ -351,10 +349,8 @@ impl VmClient {
         Ok(())
     }
 
-    // Методы для работы со снепшотами
     pub async fn create_snapshot(&self, name: &str) -> Result<String> {
         let url = if let Some(cluster_config) = &self.cluster_config {
-            // В кластерной версии используем vmstorage
             if let Some(vmstorage_host) = &cluster_config.vmstorage_host {
                 format!("{}/snapshot/create", vmstorage_host)
             } else {
@@ -391,7 +387,6 @@ impl VmClient {
 
     pub async fn list_snapshots(&self) -> Result<Vec<SnapshotInfo>> {
         let url = if let Some(cluster_config) = &self.cluster_config {
-            // В кластерной версии используем vmstorage
             if let Some(vmstorage_host) = &cluster_config.vmstorage_host {
                 format!("{}/snapshot/list", vmstorage_host)
             } else {
@@ -417,7 +412,6 @@ impl VmClient {
             });
         }
 
-        // Парсим ответ в формате {"status":"ok","snapshots":[...]}
         let response_text = response.text().await?;
         let response_json: serde_json::Value = serde_json::from_str(&response_text)?;
         
@@ -442,7 +436,6 @@ impl VmClient {
 
     pub async fn delete_snapshot(&self, name: &str) -> Result<()> {
         let url = if let Some(cluster_config) = &self.cluster_config {
-            // В кластерной версии используем vmstorage
             if let Some(vmstorage_host) = &cluster_config.vmstorage_host {
                 format!("{}/snapshot/delete", vmstorage_host)
             } else {
@@ -478,7 +471,6 @@ impl VmClient {
 
     pub async fn restore_snapshot(&self, name: &str) -> Result<()> {
         let url = if let Some(cluster_config) = &self.cluster_config {
-            // В кластерной версии используем vmstorage
             if let Some(vmstorage_host) = &cluster_config.vmstorage_host {
                 format!("{}/snapshot/restore", vmstorage_host)
             } else {
@@ -512,7 +504,6 @@ impl VmClient {
         Ok(())
     }
 
-    // Методы для работы с retention
     pub async fn get_retention_info(&self) -> Result<RetentionInfo> {
         let url = format!("{}/admin/tsdb/retention", self.base_url);
         
@@ -559,7 +550,6 @@ impl VmClient {
 
 
 
-    // Методы для работы с режимами работы
     pub async fn get_flags(&self) -> Result<serde_json::Value> {
         let url = format!("{}/flags", self.base_url);
         
@@ -600,7 +590,6 @@ impl VmClient {
         Ok(build_info)
     }
 
-    // Методы для получения метрик производительности
     pub async fn get_metrics_info(&self) -> Result<serde_json::Value> {
         let url = format!("{}/metrics", self.base_url);
         
@@ -619,7 +608,6 @@ impl VmClient {
 
         let metrics_text = response.text().await?;
         
-        // Парсим метрики в формате Prometheus
         let mut metrics_data = serde_json::Map::new();
         for line in metrics_text.lines() {
             if line.starts_with('#') || line.is_empty() {
@@ -639,14 +627,11 @@ impl VmClient {
     }
 
     pub async fn get_slow_queries(&self) -> Result<Vec<SlowQueryInfo>> {
-        // Получаем метрики производительности
         let metrics = self.get_metrics_info().await?;
         
         let mut slow_queries = Vec::new();
         
-        // Ищем метрики, связанные с медленными запросами
         if let Some(metrics_obj) = metrics.as_object() {
-            // vm_request_duration_seconds - время выполнения запросов
             if let Some(duration_metric) = metrics_obj.get("vm_request_duration_seconds") {
                 if let Some(duration) = duration_metric.as_f64() {
                     if duration > 1.0 {
@@ -659,7 +644,6 @@ impl VmClient {
                 }
             }
             
-            // vm_http_requests_total - общее количество запросов
             if let Some(requests_total) = metrics_obj.get("vm_http_requests_total") {
                 if let Some(total) = requests_total.as_f64() {
                     if total > 1000.0 {
@@ -672,10 +656,9 @@ impl VmClient {
                 }
             }
             
-            // vm_cache_size_bytes - размер кэша
             if let Some(cache_size) = metrics_obj.get("vm_cache_size_bytes") {
                 if let Some(size) = cache_size.as_f64() {
-                    if size > 1_000_000_000.0 { // > 1GB
+                    if size > 1_000_000_000.0 {
                         slow_queries.push(SlowQueryInfo {
                             query: "Большой кэш".to_string(),
                             duration: 0.0,
@@ -688,4 +671,4 @@ impl VmClient {
         
         Ok(slow_queries)
     }
-} 
+}

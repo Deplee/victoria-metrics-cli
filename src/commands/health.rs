@@ -7,11 +7,9 @@ use tracing::info;
 
 #[derive(Parser)]
 pub struct HealthCommand {
-    /// Показать детальную информацию
     #[arg(short, long)]
     verbose: bool,
 
-    /// Проверить только статус (для скриптов)
     #[arg(long)]
     status_only: bool,
 }
@@ -27,12 +25,10 @@ impl HealthCommand {
             return Ok(());
         }
 
-        // Основная информация о статусе
         let status_display = format_health_status(&health.status);
         println!("{} {}", "Статус:".bold(), status_display);
 
         if self.verbose {
-            // Детальная информация
             if let Some(version) = &health.version {
                 println!("{} {}", "Версия:".bold(), version);
             }
@@ -42,11 +38,9 @@ impl HealthCommand {
                 println!("{} {}", "Время работы:".bold(), formatted_uptime);
             }
 
-            // Дополнительные проверки
             self.check_additional_health(client).await?;
         }
 
-        // Цветной индикатор
         match health.status.to_lowercase().as_str() {
             "ok" | "healthy" => {
                 println!("{}", "✓ VictoriaMetrics работает нормально".green());
@@ -65,13 +59,11 @@ impl HealthCommand {
     async fn check_additional_health(&self, client: &VmClient) -> Result<()> {
         info!("Выполнение дополнительных проверок");
 
-        // Проверка доступности API
         match client.query("up", None).await {
             Ok(_) => println!("{} {}", "API:".bold(), "Доступен".green()),
             Err(e) => println!("{} {}: {}", "API:".bold(), "Ошибка".red(), e),
         }
 
-        // Проверка количества метрик
         match client.metrics().await {
             Ok(metrics) => {
                 println!(
@@ -85,4 +77,4 @@ impl HealthCommand {
 
         Ok(())
     }
-} 
+}

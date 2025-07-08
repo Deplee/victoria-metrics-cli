@@ -41,22 +41,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Выполнение запросов к VictoriaMetrics
+
     Query(QueryCommand),
     
-    /// Проверка здоровья кластера
     Health(HealthCommand),
     
-    /// Экспорт данных
     Export(ExportCommand),
-    
-    /// Импорт данных
+
     Import(ImportCommand),
-    
-    /// Администрирование VictoriaMetrics
+
     Admin(AdminCommand),
-    
-    /// Отладка и диагностика
+
     Debug(DebugCommand),
 }
 
@@ -64,7 +59,6 @@ enum Commands {
 async fn main() -> Result<(), VmCliError> {
     let mut cli = Cli::parse();
 
-    // Поддержка переменных окружения
     if cli.host == "http://localhost:8428" {
         if let Ok(env_host) = std::env::var("VM_HOST") {
             cli.host = env_host;
@@ -91,44 +85,36 @@ async fn main() -> Result<(), VmCliError> {
         }
     }
 
-    // Загрузка конфигурации
     let config = Config::load(cli.config.as_deref())?;
     
-    // Настройка логирования
     let log_level = if cli.verbose {
         "debug"
     } else {
         &config.logging.as_ref().and_then(|l| Some(l.level.clone())).unwrap_or_else(|| "info".to_string())
     };
     
-    // Настраиваем логирование
     if let Some(logging_config) = &config.logging {
         if let Some(log_file) = &logging_config.file {
-            // Создаем директорию для логов, если её нет
             if let Some(parent) = std::path::Path::new(log_file).parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
             
-            // Создаем простой файловый writer
             let file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(log_file)
                 .expect("Не удалось открыть файл для логирования");
             
-            // Настраиваем логирование с выводом в файл и консоль
             tracing_subscriber::fmt()
                 .with_env_filter(format!("vm_cli={}", log_level))
                 .with_writer(file)
                 .init();
         } else {
-            // Только консольное логирование
             tracing_subscriber::fmt()
                 .with_env_filter(format!("vm_cli={}", log_level))
                 .init();
         }
     } else {
-        // Только консольное логирование
         tracing_subscriber::fmt()
             .with_env_filter(format!("vm_cli={}", log_level))
             .init();
@@ -143,10 +129,8 @@ async fn main() -> Result<(), VmCliError> {
         }
     }
     
-    // Создание API клиента
     let api_client = api::VmClient::new(&config.host, config.timeout, config.cluster)?;
 
-    // Выполнение команды
     let result = match cli.command {
         Commands::Query(cmd) => cmd.execute(&api_client).await,
         Commands::Health(cmd) => cmd.execute(&api_client).await,

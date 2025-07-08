@@ -45,4 +45,4 @@ impl From<anyhow::Error> for VmCliError {
     }
 }
 
-pub type Result<T> = std::result::Result<T, VmCliError>; 
+pub type Result<T> = std::result::Result<T, VmCliError>;

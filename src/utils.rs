@@ -25,14 +25,12 @@ fn format_yaml(data: &QueryResponse) -> String {
 fn format_csv(data: &QueryResponse) -> String {
     let mut csv_data = String::new();
     
-    // Заголовок
     if let Some(first_result) = data.data.result.first() {
         let mut headers = vec!["timestamp".to_string(), "value".to_string()];
         headers.extend(first_result.metric.keys().cloned());
         csv_data.push_str(&headers.join(","));
         csv_data.push('\n');
         
-        // Данные
         for result in &data.data.result {
             if let Some((timestamp, value)) = &result.value {
                 let mut row = vec![timestamp.to_string(), value.to_string()];
@@ -95,7 +93,6 @@ pub fn format_health_status(status: &str) -> String {
 }
 
 pub fn format_uptime(uptime: &str) -> String {
-    // Парсинг и форматирование uptime
     if let Ok(seconds) = uptime.parse::<f64>() {
         let days = (seconds / 86400.0) as u64;
         let hours = ((seconds % 86400.0) / 3600.0) as u64;
@@ -163,20 +160,16 @@ pub fn parse_time_range(range: &str) -> Result<(String, String), String> {
 }
 
 pub fn validate_promql_query(query: &str) -> Result<(), String> {
-    // Простая валидация PromQL запроса
     if query.trim().is_empty() {
         return Err("Запрос не может быть пустым".to_string());
     }
     
-    // Проверка на базовые операторы
     let valid_operators = ["+", "-", "*", "/", "%", "==", "!=", ">", "<", ">=", "<="];
     let has_operator = valid_operators.iter().any(|op| query.contains(op));
     
-    // Проверка на базовые функции
     let valid_functions = ["sum", "avg", "count", "min", "max", "rate", "increase"];
     let has_function = valid_functions.iter().any(|func| query.contains(func));
     
-    // Проверка на простые метрики (например, "up", "node_cpu_seconds_total")
     let is_simple_metric = query.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '{' || c == '}' || c == '=' || c == '"' || c == ',' || c == ' ');
     
     if !has_operator && !has_function && !query.contains('{') && !is_simple_metric {
@@ -184,4 +177,4 @@ pub fn validate_promql_query(query: &str) -> Result<(), String> {
     }
     
     Ok(())
-} 
+}
